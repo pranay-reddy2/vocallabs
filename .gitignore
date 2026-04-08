@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.build/
+
+# API keys — never commit
+config/keys.js
+
+# Electron build cache
+out/
+release/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.user

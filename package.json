@@ -1,0 +1,46 @@
+{
+  "name": "vocalflow-windows",
+  "version": "1.0.0",
+  "description": "Hold-to-record voice dictation app for Windows — powered by Deepgram + Groq",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --win --x64",
+    "pack": "electron-builder --dir"
+  },
+  "keywords": ["dictation", "speech-to-text", "deepgram", "groq", "electron"],
+  "author": "Pranay Reddy N",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {
+    "node-record-lpcm16": "^1.0.1",
+    "ws": "^8.16.0",
+    "uiohook-napi": "^1.5.3",
+    "@nut-tree-fork/nut-js": "^4.2.0"
+  },
+  "build": {
+    "appId": "com.vocalflow.windows",
+    "productName": "VocalFlow",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "files": [
+      "src/**/*",
+      "config/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ]
+  }
+}

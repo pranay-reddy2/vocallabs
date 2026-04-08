@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { background: transparent; width: 160px; height: 60px; overflow: hidden; }
+
+    #overlay {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(8, 8, 16, 0.88);
+      border: 1px solid rgba(120, 80, 255, 0.35);
+      border-radius: 30px;
+      padding: 0 18px;
+      height: 52px;
+      backdrop-filter: blur(12px);
+      opacity: 0;
+      transform: translateY(8px) scale(0.96);
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }
+    #overlay.visible { opacity: 1; transform: translateY(0) scale(1); }
+    #overlay.transcribing { border-color: rgba(80, 180, 255, 0.4); }
+
+    .bars { display: flex; gap: 3px; align-items: center; height: 28px; }
+    .bar {
+      width: 3px;
+      border-radius: 2px;
+      background: #8b5cf6;
+      height: 6px;
+      animation: none;
+    }
+    .recording .bar { animation: wave 0.7s ease-in-out infinite; }
+    .bar:nth-child(2) { animation-delay: 0.1s; }
+    .bar:nth-child(3) { animation-delay: 0.2s; }
+    .bar:nth-child(4) { animation-delay: 0.05s; }
+
+    @keyframes wave {
+      0%, 100% { height: 6px; }
+      50% { height: 24px; }
+    }
+
+    #label {
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.7);
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(80,180,255,0.2);
+      border-top-color: #50b4ff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+    .transcribing .spinner { display: block; }
+    .transcribing .bars { display: none; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="overlay">
+    <div class="bars" id="bars">
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+    </div>
+    <div class="spinner"></div>
+    <span id="label">Listening…</span>
+  </div>
+  <script>
+    const overlay = document.getElementById("overlay");
+    const label = document.getElementById("label");
+    const bars = document.getElementById("bars");
+
+    window.vocalflow.onRecordingState((state) => {
+      if (state === "recording") {
+        overlay.className = "visible recording";
+        label.textContent = "Listening…";
+      } else if (state === "transcribing") {
+        overlay.className = "visible transcribing";
+        label.textContent = "Transcribing…";
+      } else {
+        overlay.className = "";
+      }
+    });
+  </script>
+</body>
+</html>
