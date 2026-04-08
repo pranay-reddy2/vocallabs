@@ -2,9 +2,12 @@
 //  src/main/index.js — Electron main process
 // ─────────────────────────────────────────────
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen } = require("electron");
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session } = require("electron");
 const path = require("path");
 const keys = require("../../config/keys");
+const Store = require("./store");
+
+const store = new Store();
 
 let mainWindow = null;
 let overlayWindow = null;
@@ -105,10 +108,10 @@ function createTray() {
   });
 }
 
-const Store = require("./store");
-const store = new Store();
+// ── IPC Handlers ──────────────────────────────
 
 ipcMain.handle("get-settings", () => store.getAll());
+
 ipcMain.handle("save-settings", (_, settings) => {
   store.setAll(settings);
   if (hotkeyManager) {
@@ -143,12 +146,20 @@ ipcMain.handle("fetch-groq-balance", async (_, apiKey) => {
 ipcMain.handle("set-recording-state", (_, state) => {
   updateTrayIcon(state);
   if (state === "recording") {
-    overlayWindow.show();
-    overlayWindow.webContents.send("recording-state", "recording");
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.show();
+      overlayWindow.webContents.send("recording-state", "recording");
+    }
   } else {
-    overlayWindow.webContents.send("recording-state", state);
-    if (state === "idle") {
-      setTimeout(() => overlayWindow.hide(), 400);
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send("recording-state", state);
+      if (state === "idle") {
+        setTimeout(() => {
+          if (overlayWindow && !overlayWindow.isDestroyed()) {
+            overlayWindow.hide();
+          }
+        }, 400);
+      }
     }
   }
 });
@@ -158,12 +169,10 @@ ipcMain.handle("inject-text", async (_, text) => {
   await injectText(text);
 });
 
-ipcMain.on("audio-chunk", (_, arrayBuffer) => {
-  console.log(`[IPC] audio-chunk received — size: ${arrayBuffer.byteLength} bytes, hasCallback: ${audioEngine.hasCallback()}`);
-  audioEngine.receiveChunk(arrayBuffer);
-});
+// ── Tray icon state ───────────────────────────
 
 function updateTrayIcon(state) {
+  if (!tray || tray.isDestroyed()) return;
   const labels = {
     idle: "VocalFlow — Hold Right Alt to dictate",
     recording: "VocalFlow — Recording…",
@@ -173,58 +182,104 @@ function updateTrayIcon(state) {
   tray.setToolTip(labels[state] || labels.idle);
 }
 
+// ── Hotkey recording flow ─────────────────────
+
+function onHotkeyPress() {
+  const liveKeys = require("../../config/keys");
+  const liveSettings = store.getAll();
+
+  const dgKey = liveKeys.DEEPGRAM_API_KEY;
+  if (!dgKey || dgKey === "YOUR_DEEPGRAM_API_KEY_HERE") {
+    console.warn("[Recording] No Deepgram API key set — aborting");
+    return;
+  }
+
+  deepgramService.connect(
+    dgKey,
+    liveSettings.model || "nova-2-general",
+    liveSettings.language || "en-US"
+  );
+
+  audioEngine.startCapture((chunk) => {
+    deepgramService.sendChunk(chunk);
+  });
+
+  updateTrayIcon("recording");
+
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.show();
+    overlayWindow.webContents.send("recording-state", "recording");
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    mainWindow.webContents.send("recording-state", "recording");
+  }
+}
+
+function onHotkeyRelease() {
+  audioEngine.stopCapture();
+  updateTrayIcon("transcribing");
+
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.webContents.send("recording-state", "transcribing");
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    mainWindow.webContents.send("recording-state", "transcribing");
+  }
+
+  deepgramService.closeStream(async (transcript) => {
+    updateTrayIcon("idle");
+
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send("recording-state", "idle");
+      setTimeout(() => {
+        if (overlayWindow && !overlayWindow.isDestroyed()) {
+          overlayWindow.hide();
+        }
+      }, 400);
+    }
+
+    if (!transcript || transcript.trim() === "") {
+      console.log("[Recording] Empty transcript — nothing to inject");
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+        mainWindow.webContents.send("recording-state", "idle");
+      }
+      return;
+    }
+
+    console.log(`[Recording] Transcript ready: "${transcript}"`);
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("transcript-raw", transcript);
+    } else {
+      const { injectText } = require("./textInjector");
+      await injectText(transcript);
+    }
+  });
+}
+
+// ── App lifecycle ─────────────────────────────
+
 app.whenReady().then(() => {
   loadServices();
   createMainWindow();
   createOverlayWindow();
   createTray();
-  audioEngine.init(); // hidden capture window — always ready
+
+  // Init audio engine — just verifies SoX, no window created
+  audioEngine.init();
 
   const settings = store.getAll();
 
   hotkeyManager.start(settings.hotkey || "RIGHT ALT", {
-    onPress: () => {
-      const liveKeys = require("../../config/keys");
-      const liveSettings = store.getAll();
-      deepgramService.connect(
-        liveKeys.DEEPGRAM_API_KEY,
-        liveSettings.model || "nova-2-general",
-        liveSettings.language || "en-US"
-      );
-      audioEngine.startCapture((chunk) => {
-        deepgramService.sendChunk(chunk);
-      });
-      updateTrayIcon("recording");
-      overlayWindow.show();
-      overlayWindow.webContents.send("recording-state", "recording");
-    },
-    onRelease: () => {
-      audioEngine.stopCapture();
-      updateTrayIcon("transcribing");
-      if (!overlayWindow.isDestroyed()) {
-        overlayWindow.webContents.send("recording-state", "transcribing");
-      }
-      deepgramService.closeStream((transcript) => {
-        updateTrayIcon("idle");
-        if (!transcript) {
-          if (!overlayWindow.isDestroyed()) {
-            overlayWindow.webContents.send("recording-state", "idle");
-            setTimeout(() => overlayWindow.hide(), 400);
-          }
-          return;
-        }
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("transcript-raw", transcript);
-        }
-      });
-    },
+    onPress: onHotkeyPress,
+    onRelease: onHotkeyRelease,
   });
 
-  const configKeys = require("../../config/keys");
-  const dgKey = configKeys.DEEPGRAM_API_KEY;
-
+  const dgKey = keys.DEEPGRAM_API_KEY;
   if (!dgKey || dgKey === "YOUR_DEEPGRAM_API_KEY_HERE") {
-    console.warn("[Deepgram] No API key set in config/keys.js — skipping connect");
+    console.warn("[Deepgram] No API key set in config/keys.js — skipping pre-connect");
   } else {
     deepgramService.connect(
       dgKey,
@@ -232,8 +287,20 @@ app.whenReady().then(() => {
       settings.language || "en-US"
     );
   }
+}).catch((err) => {
+  console.error("[App] Fatal error during startup:", err);
+  app.exit(1);
 });
 
 app.on("window-all-closed", (e) => e.preventDefault());
+
+app.on("before-quit", () => {
+  if (hotkeyManager) {
+    try { hotkeyManager.stop(); } catch {}
+  }
+  if (audioEngine) {
+    try { audioEngine.stopCapture(); } catch {}
+  }
+});
 
 module.exports = { mainWindow, overlayWindow };

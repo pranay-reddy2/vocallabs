@@ -49,6 +49,7 @@ function connect(apiKey, model, language) {
     if (isWaitingForFinal) deliverAndDisconnect();
   });
   ws.on("close", () => {
+    console.log("[Deepgram] WS closed");
     if (isWaitingForFinal) deliverAndDisconnect();
   });
 }
@@ -71,12 +72,13 @@ function closeStream(callback) {
     ws.send(Buffer.alloc(0));
   }
 
+  // Reduced timeout — for short recordings speech_final may never fire
   timeoutHandle = setTimeout(() => {
     if (isWaitingForFinal) {
       console.log("[Deepgram] ⏱️ Timeout — delivering what we have");
       deliverAndDisconnect();
     }
-  }, 3000);
+  }, 1500);
 }
 
 function handleMessage(json) {
@@ -95,10 +97,13 @@ function handleMessage(json) {
     console.log(`[Deepgram] 📚 Accumulated so far: "${accumulated}"`);
   }
 
-  if (isWaitingForFinal && msg.is_final && msg.speech_final) {
-    clearTimeout(timeoutHandle);
-    console.log(`[Deepgram] ✅ FINAL TRANSCRIPT: "${accumulated}"`);
-    deliverAndDisconnect();
+  // Deliver on speech_final, or on any is_final if we're waiting and have text
+  if (isWaitingForFinal && msg.is_final) {
+    if (msg.speech_final || accumulated) {
+      clearTimeout(timeoutHandle);
+      console.log(`[Deepgram] ✅ FINAL TRANSCRIPT: "${accumulated}"`);
+      deliverAndDisconnect();
+    }
   }
 }
 

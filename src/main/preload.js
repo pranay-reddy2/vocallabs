@@ -13,12 +13,6 @@ contextBridge.exposeInMainWorld("vocalflow", {
   injectText: (text) => ipcRenderer.invoke("inject-text", text),
   setRecordingState: (state) => ipcRenderer.invoke("set-recording-state", state),
 
-  sendAudioChunk: (buffer) => ipcRenderer.send("audio-chunk", buffer),
-
-  onStartCapture: (cb) => ipcRenderer.on("start-capture", cb),
-  onStopCapture: (cb) => ipcRenderer.on("stop-capture", cb),
-
-  onHotkeyPress: (cb) => ipcRenderer.on("hotkey-press", cb),
   onTranscriptRaw: (cb) => ipcRenderer.on("transcript-raw", (_, t) => cb(t)),
   onRecordingState: (cb) => ipcRenderer.on("recording-state", (_, s) => cb(s)),
 });

@@ -1,89 +1,102 @@
 // ─────────────────────────────────────────────
 //  src/main/audioEngine.js
+//  Direct SoX spawn — bypasses node-record-lpcm16
+//  Windows-compatible 16kHz mono PCM capture
 // ─────────────────────────────────────────────
 
-const { BrowserWindow } = require("electron");
-const path = require("path");
+const { spawn, execSync } = require("child_process");
 
-let captureWindow = null;
+let soxProcess = null;
 let chunkCallback = null;
-let isReady = false;
+let isCapturing = false;
 
 function init() {
-  captureWindow = new BrowserWindow({
-    width: 300,
-    height: 100,
-    show: true,        // ← VISIBLE for debugging
-    skipTaskbar: false,
-    title: "VocalFlow Audio",
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      backgroundThrottling: false,
-    },
-  });
-
-  captureWindow.loadFile(path.join(__dirname, "../renderer/capture.html"));
-
-  captureWindow.webContents.on("did-finish-load", () => {
-    isReady = true;
-    console.log("[AudioEngine] Capture window ready");
-    // Open devtools so we can see capture.html console logs
-    captureWindow.webContents.openDevTools({ mode: "detach" });
-  });
-
-  captureWindow.webContents.on("render-process-gone", (event, details) => {
-    console.error("[AudioEngine] Render process gone:", details.reason, details.exitCode);
-    isReady = false;
-  });
-
-  captureWindow.webContents.on("did-fail-load", (event, code, desc) => {
-    console.error("[AudioEngine] Failed to load:", code, desc);
-  });
-
-  captureWindow.on("closed", () => {
-    isReady = false;
-    captureWindow = null;
-    console.log("[AudioEngine] Capture window closed");
-    setTimeout(() => init(), 1000);
-  });
-
-  console.log("[AudioEngine] Capture window initializing...");
+  try {
+    const ver = execSync("sox --version 2>&1").toString().trim();
+    console.log("[AudioEngine] SoX found:", ver);
+  } catch {
+    console.error("[AudioEngine] SoX not found on PATH.");
+    console.error("[AudioEngine] Install via: choco install sox");
+  }
 }
 
 function startCapture(onChunk) {
-  chunkCallback = onChunk;
-  console.log(`[AudioEngine] startCapture — isReady: ${isReady}, hasWindow: ${!!captureWindow}`);
-  if (captureWindow && !captureWindow.isDestroyed() && isReady) {
-    captureWindow.webContents.send("start-capture");
-    console.log("[AudioEngine] Sent start-capture to renderer");
-  } else {
-    console.error("[AudioEngine] Cannot start — window not ready");
+  if (isCapturing) {
+    console.warn("[AudioEngine] Already capturing — ignoring");
+    return;
   }
+
+  chunkCallback = onChunk;
+  isCapturing = true;
+
+  console.log("[AudioEngine] Spawning SoX...");
+
+  // SoX args: read from default Windows audio input, output raw 16kHz mono s16le to stdout
+  const args = [
+    "-q",                  // quiet — suppress header/progress output
+    "-t", "waveaudio",     // Windows audio input type
+    "default",             // default input device
+    "-r", "16000",         // sample rate
+    "-c", "1",             // mono
+    "-e", "signed-integer",
+    "-b", "16",            // 16-bit
+    "-t", "raw",           // raw output format
+    "-",                   // output to stdout
+  ];
+
+  console.log("[AudioEngine] SoX args:", args.join(" "));
+
+  soxProcess = spawn("sox", args, {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  soxProcess.stdout.on("data", (chunk) => {
+    if (!isCapturing || !chunkCallback) return;
+    chunkCallback(chunk);
+  });
+
+  soxProcess.stderr.on("data", (data) => {
+    const msg = data.toString().trim();
+    if (msg) console.log("[AudioEngine] SoX stderr:", msg);
+  });
+
+  soxProcess.on("error", (err) => {
+    console.error("[AudioEngine] SoX process error:", err.message);
+    isCapturing = false;
+    soxProcess = null;
+  });
+
+  soxProcess.on("close", (code, signal) => {
+    console.log(`[AudioEngine] SoX exited — code: ${code}, signal: ${signal}`);
+    isCapturing = false;
+    soxProcess = null;
+  });
+
+  console.log("[AudioEngine] SoX capture started — PID:", soxProcess.pid);
 }
 
 function stopCapture() {
-  console.log("[AudioEngine] stopCapture called");
-  if (captureWindow && !captureWindow.isDestroyed() && isReady) {
+  console.log("[AudioEngine] Stopping SoX capture...");
+  isCapturing = false;
+
+  if (soxProcess) {
     try {
-      captureWindow.webContents.send("stop-capture");
-      console.log("[AudioEngine] Sent stop-capture to renderer");
+      soxProcess.kill("SIGTERM");
+      console.log("[AudioEngine] SoX process killed");
     } catch (err) {
-      console.error("[AudioEngine] Error sending stop-capture:", err.message);
+      console.error("[AudioEngine] Error killing SoX:", err.message);
     }
+    soxProcess = null;
   }
+
   setTimeout(() => {
     chunkCallback = null;
     console.log("[AudioEngine] Callback cleared");
-  }, 500);
+  }, 800);
 }
 
-function receiveChunk(arrayBuffer) {
-  if (chunkCallback) {
-    chunkCallback(Buffer.from(arrayBuffer));
-  } else {
-    console.warn("[AudioEngine] receiveChunk — no callback");
-  }
+function receiveChunk() {
+  // No-op — not used in direct SoX mode
 }
 
 function hasCallback() {
