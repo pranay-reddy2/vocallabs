@@ -1,38 +1,34 @@
 // ─────────────────────────────────────────────
 //  src/main/hotkeyManager.js
-//  Global hotkey: hold to record, release to transcribe
-// ─────────────────────────────────────────────
-
-// ─────────────────────────────────────────────
-//  src/main/hotkeyManager.js
-//  Uses uiohook-napi — native Windows hook, no binary spawn needed
+//  Uses uiohook-napi — native Windows hook
 // ─────────────────────────────────────────────
 
 let isDown = false;
 let callbacks = {};
 let started = false;
 
-// uiohook-napi key codes for Windows
+// Confirmed keycodes from your machine
 const KEYCODE_MAP = {
-  "RIGHT ALT":   0xE038,
-  "LEFT ALT":    0x0038,
-  "RIGHT CTRL":  0xE01D,
-  "LEFT CTRL":   0x001D,
-  "RIGHT SHIFT": 0xE036,
-  "LEFT SHIFT":  0x002A,
+  "RIGHT ALT":   3640,
+  "LEFT ALT":    56,
+  "RIGHT CTRL":  3613,
+  "LEFT CTRL":   29,
+  "RIGHT SHIFT": 3638,
+  "LEFT SHIFT":  42,
 };
 
 function start(hotkeyLabel, { onPress, onRelease }) {
   callbacks = { onPress, onRelease };
 
   try {
-    const { uIOhook, UiohookKey } = require("uiohook-napi");
+    const { uIOhook } = require("uiohook-napi");
 
     const targetCode = KEYCODE_MAP[hotkeyLabel] ?? KEYCODE_MAP["RIGHT ALT"];
 
     uIOhook.on("keydown", (e) => {
       if (e.keycode === targetCode && !isDown) {
         isDown = true;
+        console.log(`[HotkeyManager] 🎙️ RECORDING STARTED`);
         callbacks.onPress?.();
       }
     });
@@ -40,6 +36,7 @@ function start(hotkeyLabel, { onPress, onRelease }) {
     uIOhook.on("keyup", (e) => {
       if (e.keycode === targetCode && isDown) {
         isDown = false;
+        console.log(`[HotkeyManager] ⏹️ RECORDING STOPPED`);
         callbacks.onRelease?.();
       }
     });
@@ -52,7 +49,6 @@ function start(hotkeyLabel, { onPress, onRelease }) {
     console.log(`[HotkeyManager] Listening for: ${hotkeyLabel} (keycode: ${targetCode})`);
   } catch (err) {
     console.error("[HotkeyManager] Failed to start:", err.message);
-    console.log("[HotkeyManager] Tip: run 'npm install uiohook-napi' if missing");
   }
 }
 

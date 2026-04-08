@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"/></head>
+<body>
+<script>
+const api = window.vocalflow;
+let audioContext = null;
+let mediaStream = null;
+let scriptProcessor = null;
+let isCapturing = false;
+
+async function startCapture() {
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    audioContext = new AudioContext({ sampleRate: 16000 });
+    const source = audioContext.createMediaStreamSource(mediaStream);
+    scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+    scriptProcessor.onaudioprocess = (e) => {
+      if (!isCapturing) return;
+      const float32 = e.inputBuffer.getChannelData(0);
+      const int16 = new Int16Array(float32.length);
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      api.sendAudioChunk(int16.buffer);
+    };
+    source.connect(scriptProcessor);
+    scriptProcessor.connect(audioContext.destination);
+    isCapturing = true;
+    console.log("[Capture] Mic started");
+  } catch (err) {
+    console.error("[Capture] Failed:", err.message);
+  }
+}
+
+function stopCapture() {
+  isCapturing = false;
+  if (scriptProcessor) { scriptProcessor.disconnect(); scriptProcessor = null; }
+  if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+  if (audioContext) { audioContext.close(); audioContext = null; }
+  console.log("[Capture] Mic stopped");
+}
+
+api.onStartCapture(() => startCapture());
+api.onStopCapture(() => stopCapture());
+</script>
+</body>
+</html>

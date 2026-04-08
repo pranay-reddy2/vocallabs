@@ -13,14 +13,12 @@ let hotkeyManager = null;
 let audioEngine = null;
 let deepgramService = null;
 
-// ── Lazy-load heavy modules after app ready ──
 function loadServices() {
   hotkeyManager = require("./hotkeyManager");
   audioEngine = require("./audioEngine");
   deepgramService = require("./deepgramService");
 }
 
-// ── Settings window ──────────────────────────
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 520,
@@ -40,17 +38,12 @@ function createMainWindow() {
 
   mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
 
-  mainWindow.once("ready-to-show", () => {
-    // Don't show on startup — open via tray
-  });
-
   mainWindow.on("close", (e) => {
     e.preventDefault();
     mainWindow.hide();
   });
 }
 
-// ── Recording overlay ────────────────────────
 function createOverlayWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
@@ -77,9 +70,7 @@ function createOverlayWindow() {
   overlayWindow.hide();
 }
 
-// ── System tray ──────────────────────────────
 function createTray() {
-  // Use a simple 16×16 PNG fallback if no icon file exists
   const iconPath = path.join(__dirname, "../../assets/tray-icon.png");
   let trayIcon;
   try {
@@ -114,16 +105,12 @@ function createTray() {
   });
 }
 
-// ── IPC handlers ─────────────────────────────
-
-// Settings persistence via electron-store equivalent (simple JSON)
 const Store = require("./store");
 const store = new Store();
 
 ipcMain.handle("get-settings", () => store.getAll());
 ipcMain.handle("save-settings", (_, settings) => {
   store.setAll(settings);
-  // Restart hotkey with new key if changed
   if (hotkeyManager) {
     hotkeyManager.restart(settings.hotkey || "RIGHT ALT");
   }
@@ -171,12 +158,11 @@ ipcMain.handle("inject-text", async (_, text) => {
   await injectText(text);
 });
 
-// Receive audio chunks from renderer Web Audio API
 ipcMain.on("audio-chunk", (_, arrayBuffer) => {
+  console.log(`[IPC] audio-chunk received — size: ${arrayBuffer.byteLength} bytes, hasCallback: ${audioEngine.hasCallback()}`);
   audioEngine.receiveChunk(arrayBuffer);
 });
 
-// ── Tray icon states ─────────────────────────
 function updateTrayIcon(state) {
   const labels = {
     idle: "VocalFlow — Hold Right Alt to dictate",
@@ -187,27 +173,24 @@ function updateTrayIcon(state) {
   tray.setToolTip(labels[state] || labels.idle);
 }
 
-// ── App lifecycle ────────────────────────────
 app.whenReady().then(() => {
   loadServices();
   createMainWindow();
   createOverlayWindow();
   createTray();
+  audioEngine.init(); // hidden capture window — always ready
 
   const settings = store.getAll();
 
-  // Start hotkey listener
   hotkeyManager.start(settings.hotkey || "RIGHT ALT", {
     onPress: () => {
       const liveKeys = require("../../config/keys");
       const liveSettings = store.getAll();
-      // Reconnect fresh each recording so key/model changes take effect
       deepgramService.connect(
         liveKeys.DEEPGRAM_API_KEY,
         liveSettings.model || "nova-2-general",
         liveSettings.language || "en-US"
       );
-      mainWindow.webContents.send("hotkey-press");
       audioEngine.startCapture((chunk) => {
         deepgramService.sendChunk(chunk);
       });
@@ -218,21 +201,25 @@ app.whenReady().then(() => {
     onRelease: () => {
       audioEngine.stopCapture();
       updateTrayIcon("transcribing");
-      overlayWindow.webContents.send("recording-state", "transcribing");
+      if (!overlayWindow.isDestroyed()) {
+        overlayWindow.webContents.send("recording-state", "transcribing");
+      }
       deepgramService.closeStream((transcript) => {
         updateTrayIcon("idle");
         if (!transcript) {
-          overlayWindow.webContents.send("recording-state", "idle");
-          setTimeout(() => overlayWindow.hide(), 400);
+          if (!overlayWindow.isDestroyed()) {
+            overlayWindow.webContents.send("recording-state", "idle");
+            setTimeout(() => overlayWindow.hide(), 400);
+          }
           return;
         }
-        mainWindow.webContents.send("transcript-raw", transcript);
-        // Post-processing happens in renderer, then calls inject-text
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("transcript-raw", transcript);
+        }
       });
     },
   });
 
-  // Connect Deepgram on startup with key from config file
   const configKeys = require("../../config/keys");
   const dgKey = configKeys.DEEPGRAM_API_KEY;
 

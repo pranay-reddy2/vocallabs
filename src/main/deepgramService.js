@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────
 //  src/main/deepgramService.js
-//  WebSocket streaming to Deepgram — mirrors DeepgramService.swift
+//  WebSocket streaming to Deepgram
 // ─────────────────────────────────────────────
 
 const WebSocket = require("ws");
@@ -67,14 +67,15 @@ function closeStream(callback) {
   finalCallback = callback;
   isWaitingForFinal = true;
 
-  // Send empty frame — Deepgram's signal to flush
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(Buffer.alloc(0));
   }
 
-  // Safety timeout — deliver after 3s no matter what
   timeoutHandle = setTimeout(() => {
-    if (isWaitingForFinal) deliverAndDisconnect();
+    if (isWaitingForFinal) {
+      console.log("[Deepgram] ⏱️ Timeout — delivering what we have");
+      deliverAndDisconnect();
+    }
   }, 3000);
 }
 
@@ -90,10 +91,13 @@ function handleMessage(json) {
 
   if (msg.is_final && transcript) {
     accumulated += (accumulated ? " " : "") + transcript;
+    console.log(`[Deepgram] 📝 Partial transcript: "${transcript}"`);
+    console.log(`[Deepgram] 📚 Accumulated so far: "${accumulated}"`);
   }
 
   if (isWaitingForFinal && msg.is_final && msg.speech_final) {
     clearTimeout(timeoutHandle);
+    console.log(`[Deepgram] ✅ FINAL TRANSCRIPT: "${accumulated}"`);
     deliverAndDisconnect();
   }
 }
@@ -105,9 +109,8 @@ function deliverAndDisconnect() {
   accumulated = "";
   const cb = finalCallback;
   finalCallback = null;
+  console.log(`[Deepgram] 💉 Injecting text: "${text}"`);
   cb?.(text);
-
-  // Reconnect for next recording
   setTimeout(() => reconnect(), 300);
 }
 
@@ -156,7 +159,6 @@ async function fetchBalance(apiKey) {
           const projectId = root.projects?.[0]?.project_id;
           if (!projectId) return resolve(null);
 
-          // Fetch balance for first project
           const balOptions = {
             hostname: "api.deepgram.com",
             path: `/v1/projects/${projectId}/balances`,
