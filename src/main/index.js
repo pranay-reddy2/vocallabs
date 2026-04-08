@@ -1,6 +1,4 @@
-// ─────────────────────────────────────────────
-//  src/main/index.js — Electron main process
-// ─────────────────────────────────────────────
+
 
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session } = require("electron");
 const path = require("path");
@@ -108,7 +106,6 @@ function createTray() {
   });
 }
 
-// ── IPC Handlers ──────────────────────────────
 
 ipcMain.handle("get-settings", () => store.getAll());
 
@@ -169,7 +166,6 @@ ipcMain.handle("inject-text", async (_, text) => {
   await injectText(text);
 });
 
-// ── Tray icon state ───────────────────────────
 
 function updateTrayIcon(state) {
   if (!tray || tray.isDestroyed()) return;
@@ -182,7 +178,6 @@ function updateTrayIcon(state) {
   tray.setToolTip(labels[state] || labels.idle);
 }
 
-// ── Hotkey recording flow ─────────────────────
 
 function onHotkeyPress() {
   const liveKeys = require("../../config/keys");
@@ -259,7 +254,6 @@ function onHotkeyRelease() {
   });
 }
 
-// ── App lifecycle ─────────────────────────────
 
 app.whenReady().then(() => {
   loadServices();

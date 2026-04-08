@@ -1,7 +1,3 @@
-// ─────────────────────────────────────────────
-//  src/main/deepgramService.js
-//  WebSocket streaming to Deepgram
-// ─────────────────────────────────────────────
 
 const WebSocket = require("ws");
 const https = require("https");
@@ -72,7 +68,6 @@ function closeStream(callback) {
     ws.send(Buffer.alloc(0));
   }
 
-  // Reduced timeout — for short recordings speech_final may never fire
   timeoutHandle = setTimeout(() => {
     if (isWaitingForFinal) {
       console.log("[Deepgram] ⏱️ Timeout — delivering what we have");
@@ -97,7 +92,6 @@ function handleMessage(json) {
     console.log(`[Deepgram] 📚 Accumulated so far: "${accumulated}"`);
   }
 
-  // Deliver on speech_final, or on any is_final if we're waiting and have text
   if (isWaitingForFinal && msg.is_final) {
     if (msg.speech_final || accumulated) {
       clearTimeout(timeoutHandle);
@@ -119,7 +113,6 @@ function deliverAndDisconnect() {
   setTimeout(() => reconnect(), 300);
 }
 
-// ── REST: fetch available models ─────────────
 async function fetchModels(apiKey) {
   return new Promise((resolve) => {
     const options = {
@@ -147,7 +140,6 @@ async function fetchModels(apiKey) {
   });
 }
 
-// ── REST: fetch account balance ──────────────
 async function fetchBalance(apiKey) {
   return new Promise((resolve) => {
     const options = {

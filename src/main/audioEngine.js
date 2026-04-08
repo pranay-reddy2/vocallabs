@@ -1,9 +1,3 @@
-// ─────────────────────────────────────────────
-//  src/main/audioEngine.js
-//  Direct SoX spawn — bypasses node-record-lpcm16
-//  Windows-compatible 16kHz mono PCM capture
-// ─────────────────────────────────────────────
-
 const { spawn, execSync } = require("child_process");
 
 let soxProcess = null;
@@ -31,7 +25,6 @@ function startCapture(onChunk) {
 
   console.log("[AudioEngine] Spawning SoX...");
 
-  // SoX args: read from default Windows audio input, output raw 16kHz mono s16le to stdout
   const args = [
     "-q",                  // quiet — suppress header/progress output
     "-t", "waveaudio",     // Windows audio input type

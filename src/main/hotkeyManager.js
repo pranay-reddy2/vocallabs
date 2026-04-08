@@ -1,13 +1,8 @@
-// ─────────────────────────────────────────────
-//  src/main/hotkeyManager.js
-//  Uses uiohook-napi — native Windows hook
-// ─────────────────────────────────────────────
 
 let isDown = false;
 let callbacks = {};
 let started = false;
 
-// Confirmed keycodes from your machine
 const KEYCODE_MAP = {
   "RIGHT ALT":   3640,
   "LEFT ALT":    56,

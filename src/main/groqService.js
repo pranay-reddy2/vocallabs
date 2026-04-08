@@ -1,8 +1,3 @@
-// ─────────────────────────────────────────────
-//  src/main/groqService.js
-//  LLM post-processing + model listing + balance
-// ─────────────────────────────────────────────
-
 const https = require("https");
 
 function post(apiKey, path, body) {
@@ -57,10 +52,8 @@ async function fetchGroqModels(apiKey) {
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
-// Groq doesn't expose a public balance API — return a note
 async function fetchGroqBalance(apiKey) {
   if (!apiKey) return null;
-  // Attempt to check via usage endpoint (may not be available on all plans)
   const root = await get(apiKey, "/v1/usage");
   if (root && !root.error) {
     return { note: "Usage data available — check console.groq.com for billing" };
