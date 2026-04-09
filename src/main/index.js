@@ -1,5 +1,4 @@
 
-
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, session } = require("electron");
 const path = require("path");
 const keys = require("../../config/keys");
